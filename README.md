@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/Logo.png" alt="Cephelo AITrader" width="300">
+</p>
+
 # Cephelo_AITrader — Bot per Liquidity Arena 2026 (Track A, Phase I)
 
 > *Cephelo: capo carovana dei Rover, il popolo mercante di Shannara — commercia qualsiasi cosa,
