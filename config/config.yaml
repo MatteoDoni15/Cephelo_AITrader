@@ -1,0 +1,68 @@
+# =============================================================
+# Cephelo_AITrader — Liquidity Arena 2026, Track A Phase I
+# Tutti i parametri della strategia e del rischio sono qui.
+# =============================================================
+
+mode: paper                # paper | live
+
+timeframe: "4h"            # timeframe dei segnali (rate limit ordini: 1 ogni 5s -> niente HFT)
+
+loop:
+  manage_interval_sec: 60          # ogni quanto: stop, equity, drawdown, heartbeat
+  signal_grace_sec: 120            # attesa dopo la chiusura candela prima di calcolare i segnali
+
+universe:
+  # Simboli esclusi dal trading (stablecoin e oro: momentum inefficace, vol quasi nulla)
+  exclude: [USDC, XAUT, PAXG, STABLE]
+
+strategy:
+  ema_fast: 50
+  ema_slow: 200
+  momentum_bars: 60          # ~10 giorni su 4h: lookback del momentum (da sweep su 250gg)
+  min_abs_momentum: 0.05     # momentum minimo (5%) per aprire una posizione
+  atr_period: 14
+  max_longs: 4               # posizioni long massime contemporanee
+  max_shorts: 2              # posizioni short massime contemporanee
+  allow_short: true
+  entry_rank: 4              # entra solo se il simbolo e' nei primi N per momentum
+  exit_rank: 10              # isteresi: esci solo se scende oltre il rank N
+  warmup_bars: 220           # barre minime di storico per generare segnali
+  min_atr_pct: 0.003         # filtra asset con volatilita' quasi nulla
+  max_atr_pct: 0.15          # filtra asset in fase esplosiva/illiquida
+
+risk:
+  leverage: 2                      # cap della competizione, impostato sui simboli usati
+  risk_per_trade: 0.006            # frazione di equity a rischio per trade (alla distanza di stop)
+  stop_atr_mult: 2.5               # trailing stop a 2.5 x ATR dal massimo favorevole
+  max_position_notional_pct: 0.35  # nozionale massimo di una singola posizione (in % equity)
+  max_gross_leverage: 1.5          # esposizione lorda totale massima (sotto il cap 2x, buffer margine)
+  warn_drawdown: 0.08              # da qui in poi: size dimezzate
+  soft_kill_drawdown: 0.12         # da qui in poi: niente nuove posizioni
+  hard_kill_drawdown: 0.15         # chiudi tutto e fermati (la gara squalifica al 20%)
+
+execution:
+  order_style: limit_ioc     # limit_ioc (limite marketable + retry) | market
+  slippage_tolerance_bps: 15 # quanto oltre il mark price puo' spingersi il prezzo limite
+  max_order_attempts: 4      # tentativi IOC prima del fallback a MARKET
+  paper_fee_bps: 5           # fee taker simulata in paper/backtest (0.05%)
+  paper_slippage_bps: 3      # slippage simulato in paper/backtest
+
+ai:
+  enabled: false             # attiva quando ricevi endpoint e chiave dell'AI API ufficiale
+  provider: openai           # openai | anthropic (formato dell'API, dipende da cosa distribuiscono)
+  max_calls_per_day: 3       # budget: 10 USD/giorno di token -> poche chiamate mirate
+  interval_hours: 8          # ogni quanto chiedere all'AI una valutazione di regime
+
+rapidx:
+  # Endpoint klines RapidX: non documentato nella advanced API, la CLI ufficiale ha get-klines.
+  # Se risponde 404 il bot passa automaticamente ai dati pubblici Binance (stessi mercati).
+  klines_path: "/api/v1/market/klines"
+
+data:
+  cache_dir: "data_cache"
+  history_bars: 1500         # barre 4h scaricate per storico/backtest (~250 giorni)
+
+paths:
+  state_file: "state/state.json"
+  trades_file: "state/trades.csv"
+  log_file: "logs/aitrade.log"
