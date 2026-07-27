@@ -5,3 +5,9 @@ PyYAML>=6.0
 python-dotenv>=1.0
 websockets>=12.0
 pytest>=8.0
+
+# Agenti AI (opzionali, richiesti solo se ai.enabled=true): Signal Agent +
+# Strategy Agent via BeeAI Framework (protocollo A2A, adapter MiniMax
+# nativo), ricerca web/news via LangChain (DuckDuckGo), classificatore
+# locale di prompt-injection via transformers. Richiede Python >= 3.11.
+beeai-framework[a2a,duckduckgo,langchain,transformers]>=0.1.0

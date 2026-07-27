@@ -6,6 +6,7 @@
   python -m aitrade status                    stato: equity, posizioni, drawdown
   python -m aitrade close-all --yes           EMERGENZA: chiude tutto
   python -m aitrade reset-kill                riattiva il bot dopo un hard kill
+  python -m aitrade ai-budget                 spesa reale sull'AI Gateway (GET /key/info)
 """
 from __future__ import annotations
 
@@ -114,6 +115,22 @@ def cmd_close_all(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_ai_budget(cfg: Config, args) -> int:
+    from .agents.budget_guard import check_budget
+    if not (cfg.ai.api_key and cfg.ai.base_url):
+        print("AI_API_KEY/AI_API_BASE_URL non configurate nel .env")
+        return 1
+    status = check_budget(cfg.ai.api_key, cfg.ai.base_url, cfg.ai.budget_safety_margin)
+    if status.error and status.spend is None:
+        print(f"Controllo fallito: {status.error}")
+        return 1
+    pct = status.spend / status.max_budget if status.max_budget else 0.0
+    esito = "OK, si puo chiamare" if status.ok else "BLOCCATO: budget quasi esaurito"
+    print(f"Spend:  {status.spend:.2f} / {status.max_budget:.2f} USD ({pct:.0%})")
+    print(f"Soglia: {cfg.ai.budget_safety_margin:.0%} — {esito}")
+    return 0
+
+
 def cmd_reset_kill(cfg: Config, args) -> int:
     from .portfolio import Store
     store = Store(cfg.resolve(cfg.paths.state_file), cfg.resolve(cfg.paths.trades_file))
@@ -150,6 +167,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("reset-kill", help="riattiva dopo hard kill")
 
+    sub.add_parser("ai-budget", help="spesa reale sull'AI Gateway (GET /key/info)")
+
     args = parser.parse_args(argv)
     root = Path(args.root) if args.root else Path(__file__).resolve().parent.parent
     cfg = load_config(root)
@@ -162,6 +181,7 @@ def main(argv: list[str] | None = None) -> int:
         "status": cmd_status,
         "close-all": cmd_close_all,
         "reset-kill": cmd_reset_kill,
+        "ai-budget": cmd_ai_budget,
     }
     return commands[args.command](cfg, args)
 

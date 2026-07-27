@@ -28,10 +28,20 @@ Backtest sui 250 giorni fino al 13/7/2026 (46 simboli, fee e slippage inclusi):
 
 ## Setup
 
+Richiede **Python >= 3.11** (per il framework degli agenti AI).
+
 ```powershell
 pip install -r requirements.txt
 copy .env.example .env        # poi compila le chiavi quando le ricevi
 ```
+
+L'installazione include il [BeeAI Framework](https://github.com/i-am-bee/beeai-framework)
+(agenti + protocollo A2A + adapter MiniMax), LangChain (ricerca DuckDuckGo) e
+`transformers`/`torch` (classificatore locale anti prompt-injection): il
+download puo' richiedere qualche minuto e qualche centinaio di MB in piu'
+rispetto al solo bot di trading. Tutto questo serve solo all'AI advisor
+opzionale (`ai.enabled`) — il bot funziona in paper/backtest/live anche
+senza, o se questi pacchetti non sono installati.
 
 ## Comandi
 
@@ -44,6 +54,7 @@ python -m aitrade run --mode live        # trading live su RapidX (richiede .env
 python -m aitrade status                 # equity, drawdown, posizioni, stato AI
 python -m aitrade close-all --yes        # EMERGENZA: chiude tutte le posizioni
 python -m aitrade reset-kill             # riattiva il bot dopo un hard-kill
+python -m aitrade ai-budget              # spesa reale sull'AI Gateway (GET /key/info)
 .\run.ps1                                # avvio con riavvio automatico (uptime)
 ```
 
@@ -67,13 +78,71 @@ aitrade/
 ├── broker/
 │   ├── paper.py         fill simulati (fee+slippage) su prezzi reali
 │   └── rapidx_live.py   ordini veri: LIMIT IOC marketable + fallback MARKET
-├── ai/                  advisor a budget + news feed della piattaforma
+├── ai/
+│   ├── advisor.py       client A2A verso lo Strategy Agent (mai l'AI Gateway direttamente)
+│   └── news.py          news feed della piattaforma RapidX
+├── agents/              Signal Agent + Strategy Agent (BeeAI, A2A, localhost) — vedi sotto
 ├── engine.py            loop principale (paper e live)
 └── backtest.py          stesso codice strategia/rischio su dati storici
 ```
 
 Paper, live e backtest usano **la stessa strategia e lo stesso risk manager**: quello
 che testi è quello che gira.
+
+## Agenti AI (Signal + Strategy, opzionale)
+
+L'AI advisor non parla piu' direttamente con l'AI Gateway: e' diviso in due
+piccoli agenti [BeeAI](https://github.com/i-am-bee/beeai-framework), avviati
+come processi separati e raggiunti via protocollo **A2A su localhost**
+(mai esposti in rete):
+
+```
+engine.py --(A2A)--> Strategy Agent --(A2A)--> Signal Agent
+                          |
+                          v
+                 AI Gateway organizzatore
+                 (MiniMax-M3, adapter BeeAI nativo)
+```
+
+- **Signal Agent** (`agents/signal_agent.py`): ricerca web + news via
+  LangChain/DuckDuckGo (gratuita, nessuna chiave). Non genera nulla, non
+  detiene credenziali — la sua unica responsabilita' e' passare al filtro
+  prompt-injection locale (`agents/injection_scanner.py`, un classificatore
+  HuggingFace che gira in CPU) tutto il testo esterno prima di restituirlo.
+- **Strategy Agent** (`agents/strategy_agent.py`): l'unico posto che detiene
+  `AI_API_KEY`/`AI_API_BASE_URL`/`AI_MODEL` e chiama l'AI Gateway
+  dell'organizzatore (adapter MiniMax nativo di BeeAI). Interroga il Signal
+  Agent per contesto fresco, scansiona anche le headline della piattaforma
+  RapidX (difesa in profondita'), e fa **una sola chiamata al modello per
+  valutazione**, con output vincolato allo schema `RiskAssessment`
+  (`risk_multiplier` 0..1, `regime`, `comment` — validato in generazione,
+  non solo dopo).
+- **Advisor** (`ai/advisor.py`, nel processo principale): client leggero
+  che interroga lo Strategy Agent via A2A. Non detiene ne' le credenziali
+  RapidX (quelle restano solo in `engine.py`) ne' quelle dell'AI Gateway.
+
+Proprieta' invariate rispetto alla versione precedente: **una sola chiamata
+AI per valutazione** (budget $10/giorno rispettato), il multiplier scala
+solo la size delle nuove posizioni (mai aperture/chiusure dirette), e
+qualunque errore in qualsiasi punto della catena (agente giu', timeout,
+output fuori schema) fa ripiegare su multiplier invariato — mai un punto di
+rottura per il trading.
+
+**Controllo budget reale** (`agents/budget_guard.py`): il conteggio locale
+(`max_calls_per_day`) non vede i retry sullo schema ne' le chiamate di
+eventuali compagni di squadra sulla stessa chiave — solo l'organizzatore sa
+la spesa vera. Prima di ogni chiamata, lo Strategy Agent interroga
+`GET {AI_API_BASE_URL}/key/info`: se `spend` supera `budget_safety_margin`
+(default 90% di `max_budget`, in `config.yaml`) la chiamata viene saltata
+con errore esplicito invece di rischiare di sforare. A differenza del resto
+della pipeline questo controllo e' fail-*aperto*: se `/key/info` non
+risponde, si procede comunque (il costo di bloccare per errore e' peggiore
+del costo di un tentativo in piu'). Controllo manuale in qualsiasi momento:
+`python -m aitrade ai-budget`.
+
+Avvio: `python -m aitrade.agents.run_agents` (gia' incluso in `run.ps1`).
+Se questi processi non partono o muoiono, il bot principale continua
+normalmente senza il multiplier AI.
 
 ## Roadmap gara (date dall'email del comitato)
 
@@ -109,6 +178,9 @@ difensivo ma **va verificato con le chiavi di test**:
 - **Parametri**: tutti in [config/config.yaml](config/config.yaml). I default vengono da uno
   sweep su 250 giorni: prima della gara rifai `backtest --refresh` e ricontrolla che il MDD
   resti sotto il 12% con dati aggiornati.
-- **AI advisor**: scala solo la size delle nuove posizioni (0..1), mai le uscite. Se l'AI API
-  non risponde il bot continua da solo. Non usare API AI di terze parti: squalifica.
+- **AI advisor**: scala solo la size delle nuove posizioni (0..1), mai le uscite. Se lo
+  Strategy Agent non risponde (o non e' avviato) il bot continua da solo. L'unica AI
+  generativa usata e' MiniMax-M3 via l'AI Gateway dell'organizzatore (vedi sezione
+  "Agenti AI" sopra) — non usare API AI di terze parti: squalifica.
 - **Log**: `logs/aitrade.log` (rotante), trade in `state/trades.csv`, stato in `state/state.json`.
+  Gli agenti AI (`agents/run_agents.py`) loggano su stdout del proprio processo.

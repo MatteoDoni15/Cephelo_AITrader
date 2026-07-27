@@ -61,7 +61,23 @@ class AiCfg:
     interval_hours: int = 8
     api_key: str = ""
     base_url: str = ""
-    model: str = ""
+    model: str = "MiniMax-M3"
+    # Signal Agent e Strategy Agent (BeeAI + A2A, vedi aitrade/agents/): processi
+    # separati, SOLO localhost. L'engine parla con lo Strategy Agent via
+    # strategy_agent_url; lo Strategy Agent parla col Signal Agent via
+    # signal_agent_url. Le porte servono solo a chi avvia i server (run_agents.py).
+    strategy_agent_url: str = "http://127.0.0.1:8802"
+    signal_agent_url: str = "http://127.0.0.1:8801"
+    signal_agent_port: int = 8801
+    strategy_agent_port: int = 8802
+    # Shared secret applicativo (AGENTS_SHARED_SECRET nel .env) verificato tra
+    # Advisor/Strategy Agent/Signal Agent: vedi aitrade/agents/envelope.py.
+    # Vuoto = nessuna verifica (comportamento di default, retrocompatibile).
+    shared_secret: str = ""
+    # Soglia di sicurezza sul budget reale (spend/max_budget da GET /key/info,
+    # vedi agents/budget_guard.py): oltre questa frazione, lo Strategy Agent
+    # rifiuta la chiamata invece di rischiare di sforare il budget condiviso.
+    budget_safety_margin: float = 0.9
 
 
 @dataclass
@@ -139,4 +155,5 @@ def load_config(root: Path | None = None) -> Config:
     cfg.ai.api_key = os.getenv("AI_API_KEY", "")
     cfg.ai.base_url = os.getenv("AI_API_BASE_URL", "")
     cfg.ai.model = os.getenv("AI_MODEL", cfg.ai.model)
+    cfg.ai.shared_secret = os.getenv("AGENTS_SHARED_SECRET", "")
     return cfg

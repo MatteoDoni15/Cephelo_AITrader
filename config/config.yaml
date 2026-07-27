@@ -49,9 +49,19 @@ execution:
 
 ai:
   enabled: false             # attiva quando ricevi endpoint e chiave dell'AI API ufficiale
-  provider: openai           # openai | anthropic (formato dell'API, dipende da cosa distribuiscono)
+  provider: openai           # non piu' usato per l'HTTP (lo Strategy Agent usa l'adapter MiniMax di BeeAI); tenuto per compatibilita'
   max_calls_per_day: 3       # budget: 10 USD/giorno di token -> poche chiamate mirate
   interval_hours: 8          # ogni quanto chiedere all'AI una valutazione di regime
+  # Signal Agent e Strategy Agent (aitrade/agents/, protocollo A2A): processi
+  # separati avviati da `python -m aitrade.agents.run_agents`, SOLO su localhost.
+  # Cambia le porte solo se sono gia' occupate da un altro processo.
+  signal_agent_port: 8801
+  strategy_agent_port: 8802
+  signal_agent_url: "http://127.0.0.1:8801"
+  strategy_agent_url: "http://127.0.0.1:8802"
+  # Sopra questa frazione di max_budget (da GET /key/info), lo Strategy Agent
+  # rifiuta la chiamata invece di rischiare di sforare il budget condiviso col team.
+  budget_safety_margin: 0.9
 
 rapidx:
   # Endpoint klines RapidX: non documentato nella advanced API, la CLI ufficiale ha get-klines.
