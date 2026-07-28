@@ -38,6 +38,9 @@ class AiBudget:
     last_call_ts: float = 0.0
     risk_multiplier: float = 1.0
     last_comment: str = ""
+    last_trace_id: str = ""    # trace_id dell'ultima valutazione AI riuscita (vedi ai/advisor.py);
+                                # loggato su ogni trade OPEN per dimostrare la correlazione
+                                # decisione-AI <-> ordine richiesta dal regolamento di gara
 
 
 @dataclass
@@ -96,11 +99,15 @@ class Store:
 
     # ------------------------------------------------------------ trade log
 
+    # ai_multiplier/ai_trace_id: valorizzati SOLO sui trade OPEN (l'AI scala solo
+    # il sizing delle nuove posizioni, mai le uscite) — vuoti su CLOSE per
+    # costruzione, cosi' il log stesso mostra che l'AI non tocca mai le uscite.
     TRADE_FIELDS = ["ts", "iso", "mode", "sym", "action", "side", "qty",
-                    "price", "fee", "pnl", "reason"]
+                    "price", "fee", "pnl", "reason", "ai_multiplier", "ai_trace_id"]
 
     def log_trade(self, mode: str, sym: str, action: str, side: str, qty: float,
-                  price: float, fee: float, pnl: float, reason: str) -> None:
+                  price: float, fee: float, pnl: float, reason: str,
+                  ai_multiplier: float | None = None, ai_trace_id: str = "") -> None:
         new = not self.trades_file.exists()
         with self.trades_file.open("a", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=self.TRADE_FIELDS)
@@ -113,4 +120,6 @@ class Store:
                 "mode": mode, "sym": sym, "action": action, "side": side,
                 "qty": f"{qty:.10g}", "price": f"{price:.10g}",
                 "fee": f"{fee:.6f}", "pnl": f"{pnl:.6f}", "reason": reason,
+                "ai_multiplier": f"{ai_multiplier:.4f}" if ai_multiplier is not None else "",
+                "ai_trace_id": ai_trace_id,
             })

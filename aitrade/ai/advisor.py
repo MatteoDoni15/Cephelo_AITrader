@@ -78,6 +78,7 @@ class Advisor:
                 raise RuntimeError(payload["error"])
             mult = float(payload["risk_multiplier"])
             budget.risk_multiplier = min(1.0, max(0.0, mult))
+            budget.last_trace_id = trace_id
             regime = str(payload.get("regime", "?"))
             comment = str(payload.get("comment", ""))
             budget.last_comment = f"{regime}: {comment}"

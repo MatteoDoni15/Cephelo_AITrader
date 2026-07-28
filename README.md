@@ -140,6 +140,15 @@ risponde, si procede comunque (il costo di bloccare per errore e' peggiore
 del costo di un tentativo in piu'). Controllo manuale in qualsiasi momento:
 `python -m aitrade ai-budget`.
 
+**Correlazione decisione-AI <-> ordine** (richiesta dal regolamento: "the
+Organizer will verify AI usage by analyzing the correlation between AI
+decision logs and executed trading orders"): ogni trade **OPEN** in
+`state/trades.csv` porta le colonne `ai_multiplier`/`ai_trace_id` con il
+multiplier e il trace_id in vigore in quel momento (join diretto con
+`logs/traces.jsonl` per il ciclo di valutazione completo). I trade **CLOSE**
+le lasciano vuote per costruzione — l'AI non tocca mai le uscite, e il log
+lo dimostra invece di limitarsi ad affermarlo.
+
 Avvio: `python -m aitrade.agents.run_agents` (gia' incluso in `run.ps1`).
 Se questi processi non partono o muoiono, il bot principale continua
 normalmente senza il multiplier AI.

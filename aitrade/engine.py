@@ -282,7 +282,9 @@ class Engine:
             opened_at=time.time(),
         )
         self.store.log_trade(self.mode, sym, "OPEN", side, fill.qty, fill.price,
-                             fill.fee, 0.0, reason)
+                             fill.fee, 0.0, reason,
+                             ai_multiplier=self.state.ai.risk_multiplier,
+                             ai_trace_id=self.state.ai.last_trace_id)
         log.info("OPEN %s %s qty=%.10g @ %.6g (%s)", side, sym, fill.qty, fill.price, reason)
 
     def _close(self, sym: str, pos: Position, ref_price: float, reason: str) -> None:

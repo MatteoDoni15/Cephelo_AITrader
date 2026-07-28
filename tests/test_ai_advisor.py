@@ -50,6 +50,30 @@ def test_assess_updates_multiplier_on_success(monkeypatch):
     assert "volatile" in budget.last_comment
 
 
+def test_assess_stores_trace_id_on_success_for_trade_log_correlation(monkeypatch):
+    adv = make_advisor()
+    budget = AiBudget(risk_multiplier=1.0, last_trace_id="")
+
+    async def fake_call(envelope: Envelope):
+        return {"risk_multiplier": 0.5, "regime": "calm", "comment": ""}
+
+    monkeypatch.setattr(adv, "_call_strategy_agent", fake_call)
+    adv.assess(budget, "snapshot", [])
+    assert budget.last_trace_id  # usato da engine.py per loggare i trade OPEN
+
+
+def test_assess_keeps_previous_trace_id_on_error(monkeypatch):
+    adv = make_advisor()
+    budget = AiBudget(risk_multiplier=0.8, last_trace_id="previous-trace")
+
+    async def fake_call(envelope: Envelope):
+        raise ConnectionError("Strategy Agent non raggiungibile")
+
+    monkeypatch.setattr(adv, "_call_strategy_agent", fake_call)
+    adv.assess(budget, "snapshot", [])
+    assert budget.last_trace_id == "previous-trace"  # invariato, come il multiplier
+
+
 def test_assess_builds_envelope_with_trace_id_and_configured_secret(monkeypatch):
     adv = make_advisor(shared_secret="s3cret")
     budget = AiBudget(risk_multiplier=1.0)
