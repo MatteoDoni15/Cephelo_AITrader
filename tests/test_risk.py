@@ -76,3 +76,54 @@ def test_trailing_stop_short():
     stop = rm.trail_stop("SHORT", 90.0, 2.0, stop)
     assert stop == 96.0
     assert rm.stop_hit("SHORT", 96.5, stop)
+
+
+# ---------------------------------------------------------------- Fase II
+
+def make_rm_phase2() -> RiskManager:
+    rm = RiskManager(RiskCfg(phase=2))
+    rm.update_equity(1000.0)
+    return rm
+
+
+def test_phase2_levels_use_fixed_equity_floor():
+    rm = make_rm_phase2()
+    assert rm.update_equity(920.0) == NORMAL       # sopra 900
+    assert rm.update_equity(880.0) == WARN         # sotto 900
+    assert rm.update_equity(840.0) == SOFT_KILL    # sotto 850
+    assert rm.update_equity(790.0) == HARD_KILL    # sotto 800 (regola ufficiale)
+    assert rm.update_equity(999.0) == HARD_KILL    # permanente finche' non resettato
+    rm.reset_kill()
+    assert rm.update_equity(999.0) == NORMAL
+
+
+def test_phase2_ignores_drawdown_from_peak():
+    """Stesso -20% dal massimo storico, esito diverso tra le due fasi: la
+    Fase I guarda il drawdown dal picco, la Fase II un pavimento fisso."""
+    rm1 = RiskManager(RiskCfg(phase=1))
+    rm1.update_equity(1200.0)
+    assert rm1.update_equity(960.0) == HARD_KILL   # -20% dal picco >= soglia 15%
+
+    rm2 = RiskManager(RiskCfg(phase=2))
+    rm2.update_equity(1200.0)
+    assert rm2.update_equity(960.0) == NORMAL      # 960 > 900: nessun problema in Fase II
+
+
+def test_phase2_sizing_halved_in_warn():
+    rm = make_rm_phase2()
+    full = rm.position_qty(SizingInput(equity=1000, price=100, atr=2, gross_notional_open=0))
+    rm2 = make_rm_phase2()
+    rm2.update_equity(880.0)  # WARN
+    half = rm2.position_qty(SizingInput(equity=880, price=100, atr=2, gross_notional_open=0))
+    assert half < full * 0.6
+
+
+def test_phase2_no_new_positions_in_soft_kill():
+    rm = make_rm_phase2()
+    rm.update_equity(840.0)
+    assert not rm.can_open(840.0)
+    assert rm.position_qty(SizingInput(equity=840, price=100, atr=2, gross_notional_open=0)) == 0.0
+
+
+def test_phase_defaults_to_1_for_backward_compatibility():
+    assert RiskCfg().phase == 1

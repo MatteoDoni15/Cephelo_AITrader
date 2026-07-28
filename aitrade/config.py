@@ -39,9 +39,17 @@ class RiskCfg:
     stop_atr_mult: float = 3.0
     max_position_notional_pct: float = 0.35
     max_gross_leverage: float = 1.5
+    # Fase I: drawdown % dal massimo storico (squalifica ufficiale a MDD 20%)
     warn_drawdown: float = 0.08
     soft_kill_drawdown: float = 0.12
     hard_kill_drawdown: float = 0.15
+    # Fase II: pavimento fisso di equity (regola ufficiale: equity<800/NAV<0.8),
+    # non un drawdown dal picco — vedi risk.py. Cambiare a mano `phase: 2`
+    # in config.yaml solo quando l'organizzatore annuncia il passaggio di fase.
+    phase: int = 1
+    phase2_warn_equity: float = 900.0
+    phase2_soft_kill_equity: float = 850.0
+    phase2_hard_kill_equity: float = 800.0   # regola ufficiale, non un margine
 
 
 @dataclass

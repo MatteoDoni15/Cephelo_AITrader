@@ -36,9 +36,16 @@ risk:
   stop_atr_mult: 2.5               # trailing stop a 2.5 x ATR dal massimo favorevole
   max_position_notional_pct: 0.35  # nozionale massimo di una singola posizione (in % equity)
   max_gross_leverage: 1.5          # esposizione lorda totale massima (sotto il cap 2x, buffer margine)
-  warn_drawdown: 0.08              # da qui in poi: size dimezzate
+  warn_drawdown: 0.08              # da qui in poi: size dimezzate (regole Fase I)
   soft_kill_drawdown: 0.12         # da qui in poi: niente nuove posizioni
   hard_kill_drawdown: 0.15         # chiudi tutto e fermati (la gara squalifica al 20%)
+  # Fase II (regolamento: liquidazione forzata a equity<800/NAV<0.8 — un
+  # PAVIMENTO FISSO, non un drawdown dal massimo storico). Cambia phase a 2
+  # SOLO quando l'organizzatore annuncia il passaggio di fase, non prima.
+  phase: 1                         # 1 | 2 — quale regime di liquidazione applicare
+  phase2_warn_equity: 900          # da qui in poi: size dimezzate (Fase II)
+  phase2_soft_kill_equity: 850     # da qui in poi: niente nuove posizioni (Fase II)
+  phase2_hard_kill_equity: 800     # regola ufficiale Fase II: chiudi tutto e fermati
 
 execution:
   order_style: limit_ioc     # limit_ioc (limite marketable + retry) | market

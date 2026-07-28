@@ -14,7 +14,8 @@ Bot di trading algoritmico per la competizione, costruito attorno ai vincoli di 
 | Ordini via RapidX, 1 scrittura / 5 s | Client REST con rate limiter bloccante per endpoint ([rate_limiter.py](aitrade/rate_limiter.py)) |
 | Solo 50 perpetual Binance in whitelist | Universo fisso in [symbols.py](aitrade/symbols.py), esclusioni da config |
 | Leva max 2x | Leva impostata a 2x, esposizione lorda cap a 1.5x equity |
-| **Squalifica a Max Drawdown 20%** | Kill-switch a 3 livelli: 8% (size dimezzate) → 12% (no nuove posizioni) → 15% (chiudi tutto e fermati) |
+| **Squalifica a Max Drawdown 20%** (Fase I) | Kill-switch a 3 livelli: 8% (size dimezzate) → 12% (no nuove posizioni) → 15% (chiudi tutto e fermati) |
+| **Liquidazione forzata a equity<800/NAV<0.8** (Fase II) | Stesso kill-switch, soglie fisse invece che drawdown dal picco: 900 → 850 → 800. Attivare con `risk.phase: 2` in config.yaml *solo* quando l'organizzatore annuncia il passaggio — vedi [risk.py](aitrade/risk.py) |
 | Solo AI API dell'organizzatore, 10 $/giorno | Advisor opzionale con budget di chiamate giornaliero ([advisor.py](aitrade/ai/advisor.py)) |
 | Uptime ≥ 90% | Loop che non muore mai, stato persistente, wrapper di riavvio [run.ps1](run.ps1) |
 | Conferma stato dopo ogni scrittura | Ogni ordine viene verificato via `clientOrderId`; niente retry alla cieca |
