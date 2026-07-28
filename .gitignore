@@ -8,3 +8,4 @@ data_cache/
 logs/
 state/
 *.egg-info/
+ssh-key-2026-07-28.key
