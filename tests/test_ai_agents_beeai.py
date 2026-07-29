@@ -53,13 +53,11 @@ def _run_agent(agent, request):
 
 
 def test_strategy_agent_returns_valid_payload_on_success(monkeypatch):
-    from aitrade.agents.schemas import RiskAssessment
-
     agent = StrategyAgent(api_key="k", base_url="http://x", model="MiniMax-M3",
                            signal_agent_url="http://127.0.0.1:8801")
 
     fake_response = SimpleNamespace(
-        output_structured=RiskAssessment(risk_multiplier=0.3, regime="volatile", comment="test"))
+        get_text_content=lambda: '\n\n{"risk_multiplier": 0.3, "regime": "volatile", "comment": "test"}')
 
     class FakeLLM:
         async def run(self, *a, **kw):
@@ -84,6 +82,29 @@ def test_strategy_agent_returns_error_payload_on_llm_failure(monkeypatch):
             raise TimeoutError("AI Gateway timeout")
 
     monkeypatch.setattr(agent, "_get_llm", lambda: FailingLLM())
+    monkeypatch.setattr(agent, "_fetch_web_context", _async_return([]))
+    monkeypatch.setattr("aitrade.agents.strategy_agent.check_budget", lambda *a, **k: _BUDGET_OK)
+
+    request = json.dumps({"snapshot": "equity=1000", "headlines": []})
+    out = _run_agent(agent, request)
+    payload = json.loads(out.output[0].text)
+    assert "error" in payload
+
+
+def test_strategy_agent_returns_error_payload_on_empty_content(monkeypatch):
+    """Regressione: con MiniMax-M3 il response_format di BeeAI a volte
+    restituiva contenuto vuoto (visto in produzione). Il parsing manuale deve
+    gestirlo con un errore esplicito, mai un'eccezione non catturata."""
+    agent = StrategyAgent(api_key="k", base_url="http://x", model="MiniMax-M3",
+                           signal_agent_url="http://127.0.0.1:8801")
+
+    fake_response = SimpleNamespace(get_text_content=lambda: "")
+
+    class FakeLLM:
+        async def run(self, *a, **kw):
+            return fake_response
+
+    monkeypatch.setattr(agent, "_get_llm", lambda: FakeLLM())
     monkeypatch.setattr(agent, "_fetch_web_context", _async_return([]))
     monkeypatch.setattr("aitrade.agents.strategy_agent.check_budget", lambda *a, **k: _BUDGET_OK)
 
@@ -130,13 +151,12 @@ def test_strategy_agent_rejects_request_without_matching_secret(monkeypatch):
 
 def test_strategy_agent_accepts_request_with_matching_secret(monkeypatch):
     from aitrade.agents.envelope import Envelope
-    from aitrade.agents.schemas import RiskAssessment
 
     agent = StrategyAgent(api_key="k", base_url="http://x", model="MiniMax-M3",
                            signal_agent_url="http://127.0.0.1:8801", shared_secret="s3cret")
 
     fake_response = SimpleNamespace(
-        output_structured=RiskAssessment(risk_multiplier=1.0, regime="normal", comment="ok"))
+        get_text_content=lambda: '{"risk_multiplier": 1.0, "regime": "normal", "comment": "ok"}')
 
     class FakeLLM:
         async def run(self, *a, **kw):
