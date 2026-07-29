@@ -16,7 +16,7 @@ class _FakeResponse:
 
 def test_ok_when_spend_below_threshold(monkeypatch):
     monkeypatch.setattr(bg.requests, "get",
-                         lambda *a, **k: _FakeResponse({"spend": 3.0, "max_budget": 10.0}))
+                         lambda *a, **k: _FakeResponse({"info": {"spend": 3.0, "max_budget": 10.0}}))
     status = bg.check_budget("key", "https://ai.ltp-contest.com", safety_margin=0.9)
     assert status.ok
     assert status.spend == 3.0
@@ -25,16 +25,25 @@ def test_ok_when_spend_below_threshold(monkeypatch):
 
 def test_blocked_when_spend_above_threshold(monkeypatch):
     monkeypatch.setattr(bg.requests, "get",
-                         lambda *a, **k: _FakeResponse({"spend": 9.5, "max_budget": 10.0}))
+                         lambda *a, **k: _FakeResponse({"info": {"spend": 9.5, "max_budget": 10.0}}))
     status = bg.check_budget("key", "https://ai.ltp-contest.com", safety_margin=0.9)
     assert not status.ok
 
 
 def test_exactly_at_threshold_is_blocked(monkeypatch):
     monkeypatch.setattr(bg.requests, "get",
-                         lambda *a, **k: _FakeResponse({"spend": 9.0, "max_budget": 10.0}))
+                         lambda *a, **k: _FakeResponse({"info": {"spend": 9.0, "max_budget": 10.0}}))
     status = bg.check_budget("key", "https://ai.ltp-contest.com", safety_margin=0.9)
     assert not status.ok  # 9.0 non e' < 9.0
+
+
+def test_flat_response_shape_still_works(monkeypatch):
+    """Se il gateway mai cambiasse a una risposta non annidata, il fallback la accetta comunque."""
+    monkeypatch.setattr(bg.requests, "get",
+                         lambda *a, **k: _FakeResponse({"spend": 3.0, "max_budget": 10.0}))
+    status = bg.check_budget("key", "https://ai.ltp-contest.com", safety_margin=0.9)
+    assert status.ok
+    assert status.spend == 3.0
 
 
 def test_fail_open_on_network_error(monkeypatch):

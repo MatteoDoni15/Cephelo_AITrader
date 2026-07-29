@@ -139,10 +139,16 @@ class RapidXBroker(Broker):
         out: dict[str, BrokerPosition] = {}
         for p in _as_list(self.client.get_positions()):
             sym = _fstr(p, "sym", "symbol")
-            qty = abs(_fnum(p, "positionQty", "qty", "positionAmt", "volume", "size"))
-            if not sym or qty == 0:
+            raw_qty = _fnum(p, "positionQty", "qty", "positionAmt", "volume", "size")
+            if not sym or raw_qty == 0:
                 continue
-            side = _fstr(p, "positionSide", "posSide").upper() or "LONG"
+            side = _fstr(p, "positionSide", "posSide").upper()
+            if side not in ("LONG", "SHORT"):
+                # Account in modalita' NET: positionSide torna "NONE", nessun
+                # campo lato esplicito - il segno della quantita' grezza (PRIMA
+                # di abs()) indica la direzione: positiva=LONG, negativa=SHORT.
+                side = "LONG" if raw_qty > 0 else "SHORT"
+            qty = abs(raw_qty)
             entry = _fnum(p, "entryPrice", "avgEntryPrice", "avgPrice", "openPrice")
             out[sym] = BrokerPosition(sym, side, qty, entry)
         return out

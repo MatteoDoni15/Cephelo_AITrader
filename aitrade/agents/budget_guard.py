@@ -9,7 +9,11 @@ dell'organizzatore:
 
     GET {base_url}/key/info
     Authorization: Bearer <AI_API_KEY>
-    -> {"spend": ..., "max_budget": ..., "budget_reset_at": ...}
+    -> {"info": {"spend": ..., "max_budget": ..., "budget_reset_at": ...}}
+
+Nota: i campi arrivano annidati sotto "info" (verificato contro il gateway
+reale, non solo la documentazione dell'organizzatore) — non al livello
+principale della risposta.
 
 Fail-OPEN per design (a differenza dell'injection scanner): se questo
 controllo non risponde (rete, timeout, payload inatteso), si procede
@@ -52,8 +56,9 @@ def check_budget(api_key: str, base_url: str, safety_margin: float = 0.9,
                             timeout=timeout)
         resp.raise_for_status()
         data = resp.json()
-        spend = float(data["spend"])
-        max_budget = float(data["max_budget"])
+        info = data.get("info", data)  # il gateway annida i campi sotto "info"; fallback al livello principale
+        spend = float(info["spend"])
+        max_budget = float(info["max_budget"])
     except Exception as exc:
         log.warning("Controllo budget AI Gateway fallito (%s): procedo comunque (fail-open)", exc)
         return BudgetStatus(ok=True, error=str(exc))
