@@ -113,11 +113,15 @@ engine.py --(A2A)--> Strategy Agent --(A2A)--> Signal Agent
 - **Strategy Agent** (`agents/strategy_agent.py`): l'unico posto che detiene
   `AI_API_KEY`/`AI_API_BASE_URL`/`AI_MODEL` e chiama l'AI Gateway
   dell'organizzatore (adapter MiniMax nativo di BeeAI). Interroga il Signal
-  Agent per contesto fresco, scansiona anche le headline della piattaforma
-  RapidX (difesa in profondita'), e fa **una sola chiamata al modello per
-  valutazione**, con output vincolato allo schema `RiskAssessment`
-  (`risk_multiplier` 0..1, `regime`, `comment` — validato in generazione,
-  non solo dopo).
+  Agent (passandogli i **simboli veri** — leader di momentum + posizioni
+  aperte — non un blob di snapshot troncato: verificato in produzione che
+  quest'ultimo non trovava mai risultati su DuckDuckGo), scansiona anche le
+  headline della piattaforma RapidX (difesa in profondita'), e fa **una sola
+  chiamata al modello per valutazione**. L'output e' JSON richiesto
+  esplicitamente nel prompt e validato manualmente (regex + Pydantic) — non
+  il meccanismo `response_format` nativo di BeeAI, che con MiniMax-M3
+  (modello "reasoning": ragionamento esteso in `reasoning_content` prima
+  della risposta in `content`) falliva sistematicamente in produzione.
 - **Advisor** (`ai/advisor.py`, nel processo principale): client leggero
   che interroga lo Strategy Agent via A2A. Non detiene ne' le credenziali
   RapidX (quelle restano solo in `engine.py`) ne' quelle dell'AI Gateway.
@@ -178,6 +182,31 @@ difensivo ma **va verificato con le chiavi di test**:
 - [ ] `set_leverage` a 2x funziona sui simboli?
 - [ ] Confronta la firma HMAC con la CLI ufficiale se ricevi errori 1004/2002:
       `npm install -g @liquiditytech/rapidx-cli@latest` (repo skill: LiquidityTech/ltp-rapidx-skill su GitHub)
+
+## Notifiche su SOFT_KILL / HARD_KILL (opzionale)
+
+Senza configurazione, l'unico modo per accorgersi che il bot ha attivato il
+kill-switch è controllare `status` a mano. Il bot supporta due canali
+indipendenti (si possono usare anche insieme) che mandano un messaggio
+automatico non appena si **entra** in SOFT_KILL o HARD_KILL (una volta sola
+per transizione, non ad ogni tick). Vuoto = nessuna notifica su quel canale,
+comportamento di default. Vedi [alerts.py](aitrade/alerts.py).
+
+**Webhook (Discord/Slack)**: imposta `ALERT_WEBHOOK_URL` nel `.env` — per
+Discord: Impostazioni canale → Integrazioni → Webhook, copia l'URL.
+
+**Telegram (notifica sul cellulare)**:
+1. Scrivi a [@BotFather](https://t.me/BotFather) su Telegram, invia `/newbot`
+   e segui le istruzioni: ottieni un token tipo `123456789:AAExxxxxxx`.
+   Salvalo in `TELEGRAM_BOT_TOKEN` nel `.env`.
+2. Apri una chat col tuo nuovo bot e invia un qualsiasi messaggio (es. `/start`)
+   — Telegram non fa arrivare messaggi a un bot a cui non hai mai scritto.
+3. Recupera il tuo `chat_id` visitando nel browser
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` (sostituendo `<TOKEN>`)
+   subito dopo il passo 2: cerca il campo `"chat":{"id": ...}` nella risposta
+   JSON. Salvalo in `TELEGRAM_CHAT_ID` nel `.env`.
+4. Riavvia il bot: da quel momento SOFT_KILL/HARD_KILL arrivano anche come
+   messaggio Telegram.
 
 ## Note operative
 

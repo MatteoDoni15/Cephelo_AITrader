@@ -64,11 +64,18 @@ class Advisor:
             return False
         return now - budget.last_call_ts >= self.cfg.interval_hours * 3600
 
-    def assess(self, budget: AiBudget, snapshot: str, headlines: list[str]) -> float:
-        """Chiama lo Strategy Agent (A2A) e aggiorna budget.risk_multiplier. Neutro su errore."""
+    def assess(self, budget: AiBudget, snapshot: str, headlines: list[str],
+              symbols: list[str] | None = None) -> float:
+        """Chiama lo Strategy Agent (A2A) e aggiorna budget.risk_multiplier. Neutro su errore.
+
+        `symbols`: simboli veri (es. ["BTC","ETH"]) rilevanti al ciclo corrente
+        (leader di momentum + posizioni aperte) — usati dal Signal Agent per
+        costruire una query di ricerca sensata, invece di un blob di testo
+        troncato che su DuckDuckGo non trova mai nulla."""
         budget.last_call_ts = time.time()
         budget.calls_today += 1
-        envelope = Envelope(data={"snapshot": snapshot, "headlines": headlines},
+        envelope = Envelope(data={"snapshot": snapshot, "headlines": headlines,
+                                  "symbols": symbols or []},
                             auth=self.cfg.shared_secret)
         trace_id = envelope.trace_id
         try:

@@ -18,6 +18,7 @@ import time
 from . import symbols
 from .ai.advisor import Advisor
 from .ai.news import recent_headlines
+from .alerts import send_alert, send_telegram
 from .broker.base import Broker, Fill
 from .broker.paper import PaperBroker
 from .broker.rapidx_live import RapidXBroker
@@ -25,7 +26,7 @@ from .config import Config
 from .data.klines import KlineService, interval_ms
 from .portfolio import Position, State, Store
 from .rapidx.rest import RapidXClient
-from .risk import HARD_KILL, RiskManager, SizingInput
+from .risk import HARD_KILL, NORMAL, SOFT_KILL, RiskManager, SizingInput
 from .strategy.momentum import Features, MomentumStrategy
 
 log = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ class Engine:
             rapidx_klines_path=cfg.rapidx.klines_path,
         )
         self._last_feats: dict[str, Features] = {}
+        self._last_alert_level = NORMAL  # in memoria: un riavvio con livello gia' critico rinotifica, va bene cosi'
 
     # ------------------------------------------------------------- startup
 
@@ -128,6 +130,8 @@ class Engine:
         level = self.risk.update_equity(equity) if equity > 0 else "N/A"
         dd = self.risk.drawdown(equity) if equity > 0 else 0.0
 
+        self._maybe_alert(level, equity, dd)
+
         if level == HARD_KILL:
             self._hard_kill(marks)
             self._persist(equity)
@@ -145,6 +149,22 @@ class Engine:
         log.info("heartbeat | equity=%.2f dd=%.2f%% level=%s pos=%d ai_mult=%.2f",
                  equity, dd * 100, level, len(self.state.positions),
                  self.state.ai.risk_multiplier)
+
+    # -------------------------------------------------------------- notifiche
+
+    def _maybe_alert(self, level: str, equity: float, dd: float) -> None:
+        """Notifica (webhook, opzionale) solo al momento in cui si ENTRA in
+        SOFT_KILL/HARD_KILL — non ad ogni tick finche' ci si resta, altrimenti
+        spammerebbe una notifica al minuto."""
+        if level == self._last_alert_level:
+            return
+        self._last_alert_level = level
+        if level not in (SOFT_KILL, HARD_KILL):
+            return
+        msg = (f"[Cephelo_AITrader/{self.mode.upper()}] livello di rischio {level} — "
+               f"equity={equity:.2f} USDT, drawdown={dd:.1%}")
+        send_alert(self.cfg.risk.alert_webhook_url, msg)
+        send_telegram(self.cfg.risk.telegram_bot_token, self.cfg.risk.telegram_chat_id, msg)
 
     # -------------------------------------------------------------- prezzi
 
@@ -328,15 +348,21 @@ class Engine:
         if not self.advisor.should_call(self.state.ai):
             return
         ranked = sorted(feats.values(), key=lambda f: f.momentum, reverse=True)
-        top = ", ".join(f"{symbols.to_base(f.sym)} {f.momentum:+.1%}" for f in ranked[:5])
-        bottom = ", ".join(f"{symbols.to_base(f.sym)} {f.momentum:+.1%}" for f in ranked[-5:])
+        leaders = [symbols.to_base(f.sym) for f in ranked[:5]]
+        laggards = [symbols.to_base(f.sym) for f in ranked[-5:]]
+        top = ", ".join(f"{b} {f.momentum:+.1%}" for b, f in zip(leaders, ranked[:5]))
+        bottom = ", ".join(f"{b} {f.momentum:+.1%}" for b, f in zip(laggards, ranked[-5:]))
         pos = ", ".join(f"{p.side} {symbols.to_base(s)}" for s, p in self.state.positions.items()) or "none"
         snapshot = (f"equity={self.state.equity:.2f} USDT, drawdown={self.risk.drawdown(self.state.equity):.1%}, "
                     f"open positions: {pos}\nmomentum leaders: {top}\nmomentum laggards: {bottom}")
         headlines: list[str] = []
         if self.client is not None:
             headlines = recent_headlines(self.client, hours=24)
-        self.advisor.assess(self.state.ai, snapshot, headlines)
+        # Simboli veri (non testo formattato) per costruire una query di ricerca
+        # sensata lato Signal Agent, invece di troncare lo snapshot testuale.
+        position_bases = [symbols.to_base(s) for s in self.state.positions]
+        relevant_symbols = list(dict.fromkeys(leaders + position_bases))
+        self.advisor.assess(self.state.ai, snapshot, headlines, relevant_symbols)
 
     # ---------------------------------------------------------- persistenza
 

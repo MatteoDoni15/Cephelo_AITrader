@@ -50,6 +50,13 @@ class RiskCfg:
     phase2_warn_equity: float = 900.0
     phase2_soft_kill_equity: float = 850.0
     phase2_hard_kill_equity: float = 800.0   # regola ufficiale, non un margine
+    # Notifiche opzionali quando si entra in SOFT_KILL o HARD_KILL. Ogni
+    # canale e' indipendente (vuoto = nessuna notifica su quel canale), si
+    # possono usare anche insieme. Da ALERT_WEBHOOK_URL / TELEGRAM_BOT_TOKEN /
+    # TELEGRAM_CHAT_ID nel .env — vedi aitrade/alerts.py.
+    alert_webhook_url: str = ""
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
 
 @dataclass
@@ -164,4 +171,7 @@ def load_config(root: Path | None = None) -> Config:
     cfg.ai.base_url = os.getenv("AI_API_BASE_URL", "")
     cfg.ai.model = os.getenv("AI_MODEL", cfg.ai.model)
     cfg.ai.shared_secret = os.getenv("AGENTS_SHARED_SECRET", "")
+    cfg.risk.alert_webhook_url = os.getenv("ALERT_WEBHOOK_URL", "")
+    cfg.risk.telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    cfg.risk.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
     return cfg

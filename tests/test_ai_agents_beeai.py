@@ -35,9 +35,17 @@ def test_last_text_returns_most_recent_nonempty():
     assert _last_text(messages) == "ultima"
 
 
-def test_search_query_truncates_and_defaults():
-    assert _search_query("") == "crypto market news today"
-    assert len(_search_query("x" * 500)) == 200
+def test_search_query_builds_from_real_symbols():
+    assert _search_query(["BTC", "ETH"]) == "BTC ETH crypto news"
+
+
+def test_search_query_caps_at_six_symbols():
+    query = _search_query(["A", "B", "C", "D", "E", "F", "G", "H"])
+    assert query == "A B C D E F crypto news"
+
+
+def test_search_query_defaults_when_no_symbols():
+    assert _search_query([]) == "crypto market news today"
 
 
 def _run_agent(agent, request):

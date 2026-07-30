@@ -167,13 +167,14 @@ class StrategyAgent(BaseAgent):
 
             snapshot = str(envelope.data.get("snapshot", ""))
             headlines = [str(h) for h in (envelope.data.get("headlines") or [])]
+            query_symbols = [str(s) for s in (envelope.data.get("symbols") or [])]
             if not snapshot and "raw" in envelope.data:
                 snapshot = str(envelope.data["raw"])  # input non era una busta ne' un JSON riconosciuto
 
             clean_headlines = filter_clean(headlines)
 
             with span("strategy_agent.run", trace_id):
-                web_context = await self._fetch_web_context(_search_query(snapshot), trace_id)
+                web_context = await self._fetch_web_context(_search_query(query_symbols), trace_id)
 
                 user_msg = (
                     f"PORTFOLIO & MARKET SNAPSHOT:\n{snapshot}\n\n"
@@ -231,8 +232,13 @@ def _last_text(messages: list[AnyMessage]) -> str:
     return ""
 
 
-def _search_query(snapshot: str) -> str:
-    return snapshot[:200] or "crypto market news today"
+def _search_query(query_symbols: list[str]) -> str:
+    """Query di ricerca dai simboli veri (es. ["BTC","ETH"]), non da un blob
+    di testo troncato — verificato in produzione che quest'ultimo non trovava
+    mai risultati su DuckDuckGo perche' non assomiglia a una query sensata."""
+    if not query_symbols:
+        return "crypto market news today"
+    return " ".join(query_symbols[:6]) + " crypto news"
 
 
 def serve() -> None:

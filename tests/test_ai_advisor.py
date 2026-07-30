@@ -40,7 +40,7 @@ def test_assess_updates_multiplier_on_success(monkeypatch):
     budget = AiBudget(risk_multiplier=1.0)
 
     async def fake_call(envelope: Envelope):
-        assert envelope.data == {"snapshot": "snapshot", "headlines": ["headline"]}
+        assert envelope.data == {"snapshot": "snapshot", "headlines": ["headline"], "symbols": []}
         return {"risk_multiplier": 0.4, "regime": "volatile", "comment": "spike"}
 
     monkeypatch.setattr(adv, "_call_strategy_agent", fake_call)
@@ -48,6 +48,20 @@ def test_assess_updates_multiplier_on_success(monkeypatch):
     assert result == 0.4
     assert budget.risk_multiplier == 0.4
     assert "volatile" in budget.last_comment
+
+
+def test_assess_forwards_symbols_for_signal_agent_search_query(monkeypatch):
+    adv = make_advisor()
+    budget = AiBudget(risk_multiplier=1.0)
+    captured = {}
+
+    async def fake_call(envelope: Envelope):
+        captured["symbols"] = envelope.data["symbols"]
+        return {"risk_multiplier": 1.0, "regime": "normal", "comment": ""}
+
+    monkeypatch.setattr(adv, "_call_strategy_agent", fake_call)
+    adv.assess(budget, "snapshot", [], symbols=["BTC", "ETH"])
+    assert captured["symbols"] == ["BTC", "ETH"]
 
 
 def test_assess_stores_trace_id_on_success_for_trade_log_correlation(monkeypatch):
