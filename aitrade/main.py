@@ -75,22 +75,9 @@ def cmd_backtest(cfg: Config, args) -> int:
 
 
 def cmd_status(cfg: Config, args) -> int:
-    from .portfolio import Store
+    from .portfolio import Store, format_status
     store = Store(cfg.resolve(cfg.paths.state_file), cfg.resolve(cfg.paths.trades_file))
-    st = store.load()
-    hwm = st.risk.get("hwm", 0.0) or 0.0
-    dd = (1 - st.equity / hwm) if hwm > 0 else 0.0
-    print(f"Equity:      {st.equity:.2f} USDT (HWM {hwm:.2f}, drawdown {dd:.2%})")
-    print(f"Hard killed: {st.risk.get('hard_killed', False)}")
-    print(f"AI:          mult={st.ai.risk_multiplier:.2f} calls_oggi={st.ai.calls_today} "
-          f"({st.ai.last_comment or 'nessuna valutazione'})")
-    if st.positions:
-        print("Posizioni:")
-        for sym, p in st.positions.items():
-            print(f"  {p.side:5s} {sym:28s} qty={p.qty:.10g} entry={p.entry_price:.6g} "
-                  f"stop={p.stop_price:.6g}")
-    else:
-        print("Posizioni:   nessuna")
+    print(format_status(store.load()))
     return 0
 
 

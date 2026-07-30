@@ -208,6 +208,24 @@ Discord: Impostazioni canale → Integrazioni → Webhook, copia l'URL.
 4. Riavvia il bot: da quel momento SOFT_KILL/HARD_KILL arrivano anche come
    messaggio Telegram.
 
+## Stato del portafoglio via Telegram (opzionale)
+
+Con `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` gia' configurati (vedi sopra),
+scrivendo `status` (o `/status`) nella chat col bot arriva come risposta lo
+stesso report di `python -m aitrade status`: equity, drawdown, hard-kill,
+valutazione AI corrente, posizioni aperte con stop. Vedi
+[telegram_status_bot.py](aitrade/telegram_status_bot.py).
+
+E' un processo separato dal bot di trading (non tocca `engine.py`): se non
+parte o si ferma, il trading continua normale, si perde solo la possibilita'
+di chiedere lo stato via Telegram. Risponde solo ai messaggi provenienti dalla
+chat autorizzata (`TELEGRAM_CHAT_ID`) — chiunque altro scriva al bot viene
+ignorato in silenzio.
+
+Avvio: `python -m aitrade.telegram_status_bot` (in produzione va messo in un
+servizio systemd a parte, es. `cephelo-telegram.service`, accanto a
+`cephelo-bot.service` e `cephelo-agents.service`).
+
 ## Note operative
 
 - **Uptime ≥ 90%**: un laptop che va in sleep ti squalifica. Usa `.\run.ps1` + disattiva

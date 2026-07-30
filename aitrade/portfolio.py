@@ -54,6 +54,28 @@ class State:
     updated_at: float = 0.0
 
 
+def format_status(st: State) -> str:
+    """Stessa formattazione usata da `python -m aitrade status` (main.py) e dal
+    comando "status" via Telegram (telegram_status_bot.py) - un solo posto per
+    non farle divergere."""
+    hwm = st.risk.get("hwm", 0.0) or 0.0
+    dd = (1 - st.equity / hwm) if hwm > 0 else 0.0
+    lines = [
+        f"Equity:      {st.equity:.2f} USDT (HWM {hwm:.2f}, drawdown {dd:.2%})",
+        f"Hard killed: {st.risk.get('hard_killed', False)}",
+        f"AI:          mult={st.ai.risk_multiplier:.2f} calls_oggi={st.ai.calls_today} "
+        f"({st.ai.last_comment or 'nessuna valutazione'})",
+    ]
+    if st.positions:
+        lines.append("Posizioni:")
+        for sym, p in st.positions.items():
+            lines.append(f"  {p.side:5s} {sym:28s} qty={p.qty:.10g} entry={p.entry_price:.6g} "
+                         f"stop={p.stop_price:.6g}")
+    else:
+        lines.append("Posizioni:   nessuna")
+    return "\n".join(lines)
+
+
 class Store:
     def __init__(self, state_file: Path, trades_file: Path):
         self.state_file = Path(state_file)

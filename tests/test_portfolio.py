@@ -1,6 +1,6 @@
 import csv
 
-from aitrade.portfolio import AiBudget, Store
+from aitrade.portfolio import AiBudget, Position, State, Store, format_status
 
 
 def make_store(tmp_path) -> Store:
@@ -50,3 +50,34 @@ def test_ai_budget_state_roundtrips_last_trace_id(tmp_path):
     reloaded = store.load()
     assert reloaded.ai.last_trace_id == "trace-xyz"
     assert reloaded.ai.risk_multiplier == 0.6
+
+
+def test_format_status_reports_equity_drawdown_and_no_positions():
+    state = State(equity=950.0, risk={"hwm": 1000.0, "hard_killed": False})
+    text = format_status(state)
+    assert "950.00 USDT" in text
+    assert "HWM 1000.00" in text
+    assert "5.00%" in text
+    assert "Hard killed: False" in text
+    assert "Posizioni:   nessuna" in text
+
+
+def test_format_status_lists_open_positions():
+    state = State(equity=1000.0, risk={"hwm": 1000.0})
+    state.positions["BINANCE_PERP_BTC_USDT"] = Position(
+        sym="BINANCE_PERP_BTC_USDT", side="LONG", qty=0.5, entry_price=60000.0,
+        best_price=61000.0, stop_price=58000.0, atr_at_entry=500.0, opened_at=0.0,
+    )
+    text = format_status(state)
+    assert "LONG " in text
+    assert "BINANCE_PERP_BTC_USDT" in text
+    assert "entry=60000" in text
+    assert "stop=58000" in text
+
+
+def test_format_status_shows_ai_comment_when_present():
+    state = State(ai=AiBudget(risk_multiplier=0.4, calls_today=2, last_comment="regime nervoso"))
+    text = format_status(state)
+    assert "mult=0.40" in text
+    assert "calls_oggi=2" in text
+    assert "regime nervoso" in text
