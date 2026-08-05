@@ -158,6 +158,100 @@ Avvio: `python -m aitrade.agents.run_agents` (gia' incluso in `run.ps1`).
 Se questi processi non partono o muoiono, il bot principale continua
 normalmente senza il multiplier AI.
 
+## Mappa del codice
+
+Un modulo, una responsabilità: nessun file supera le ~380 righe. **3395 righe
+Python** in `aitrade/`, coperte da 17 file di test in `tests/`.
+
+<details>
+<summary><code>aitrade/</code> — 10 file, 1483 righe</summary>
+
+| File | Righe | Cosa fa |
+|---|---:|---|
+| `engine.py` | 379 | loop principale, orchestrazione paper/live |
+| `backtest.py` | 193 | stessa strategia/rischio su dati storici |
+| `risk.py` | 178 | kill-switch drawdown/equity floor, sizing, trailing stop |
+| `config.py` | 177 | carica config.yaml + .env |
+| `main.py` | 177 | CLI entrypoint |
+| `portfolio.py` | 147 | stato persistente JSON + trade log CSV |
+| `telegram_status_bot.py` | 95 | bot Telegram per stato remoto |
+| `rate_limiter.py` | 51 | bucket per i limiti di gara (1 ordine/5s) |
+| `alerts.py` | 49 | notifiche webhook/Telegram su transizioni kill-switch |
+| `symbols.py` | 37 | whitelist 50 coppie, conversioni RapidX↔Binance |
+
+</details>
+
+<details>
+<summary><code>agents/</code> — 8 file, 789 righe (BeeAI / A2A)</summary>
+
+| File | Righe | Cosa fa |
+|---|---:|---|
+| `strategy_agent.py` | 274 | unico detentore chiavi AI Gateway, valutazione regime |
+| `signal_agent.py` | 153 | ricerca web/news (LangChain/DuckDuckGo) su simboli veri |
+| `injection_scanner.py` | 77 | classificatore HuggingFace anti prompt-injection |
+| `tracing.py` | 75 | trace_id e log delle chiamate AI |
+| `budget_guard.py` | 70 | controllo spesa reale via GET /key/info |
+| `envelope.py` | 68 | validazione scambi A2A |
+| `run_agents.py` | 53 | avvio processi Signal Agent + Strategy Agent |
+| `schemas.py` | 19 | modelli Pydantic condivisi |
+
+</details>
+
+<details>
+<summary><code>broker/</code> — 3 file, 396 righe</summary>
+
+| File | Righe | Cosa fa |
+|---|---:|---|
+| `rapidx_live.py` | 266 | ordini reali: LIMIT IOC marketable + fallback MARKET |
+| `paper.py` | 86 | fill simulati (fee+slippage) su prezzi reali |
+| `base.py` | 44 | interfaccia broker astratta |
+
+</details>
+
+<details>
+<summary><code>rapidx/</code> — 2 file, 245 righe</summary>
+
+| File | Righe | Cosa fa |
+|---|---:|---|
+| `rest.py` | 204 | tutti gli endpoint REST (ordini, posizioni, account, news) |
+| `auth.py` | 41 | firma HMAC-SHA256 |
+
+</details>
+
+<details>
+<summary><code>ai/</code> — 2 file, 154 righe</summary>
+
+| File | Righe | Cosa fa |
+|---|---:|---|
+| `advisor.py` | 115 | client verso Strategy Agent (mai l'AI Gateway diretto) |
+| `news.py` | 39 | news feed della piattaforma RapidX |
+
+</details>
+
+<details>
+<summary><code>strategy/</code> — 2 file, 180 righe</summary>
+
+| File | Righe | Cosa fa |
+|---|---:|---|
+| `momentum.py` | 149 | segnali long/short cross-sectional + isteresi di uscita |
+| `indicators.py` | 31 | EMA, ATR e altri indicatori tecnici |
+
+</details>
+
+<details>
+<summary><code>data/</code> — 1 file, 144 righe</summary>
+
+| File | Righe | Cosa fa |
+|---|---:|---|
+| `klines.py` | 144 | candele: RapidX se disponibile, fallback Binance pubblico |
+
+</details>
+
+Test (`tests/`, uno per modulo principale): `agents_envelope`, `ai_advisor`,
+`ai_agents_beeai`, `ai_budget_guard`, `ai_injection_scanner`, `ai_schemas`,
+`alerts`, `auth`, `backtest`, `engine_alerts`, `paper_broker`, `portfolio`,
+`rapidx_live`, `rate_limiter`, `risk`, `strategy`, `telegram_status_bot`.
+
 ## Roadmap gara (date dall'email del comitato)
 
 1. **Subito**: crea il sub-portfolio su RapidX (Assets → Trading → RapidX → +Portfolio)
