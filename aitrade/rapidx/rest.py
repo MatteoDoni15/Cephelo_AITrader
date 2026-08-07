@@ -70,7 +70,12 @@ class RapidXClient:
             headers = auth_headers(params, self.access_key, self.secret_key)
             url = self.host + path
             try:
-                if method in ("GET", "DELETE"):
+                # Solo le GET vanno in query string: RapidX verifica la firma
+                # sul body JSON per scritture (POST/PUT/DELETE) - una DELETE con
+                # parametri in query string torna "2000: API verification failed"
+                # anche a parita' di parametri e firma (visto in produzione su
+                # close_position, confermato con scripts/check_delete_signing.py).
+                if method == "GET":
                     resp = self.session.request(method, url, params=params,
                                                 headers=headers, timeout=self.timeout)
                 else:
