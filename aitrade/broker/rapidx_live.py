@@ -80,7 +80,16 @@ class RapidXBroker(Broker):
 
     def load_symbol_rules(self) -> None:
         try:
-            for item in _as_list(self.client.get_symbol_info()):
+            data = self.client.get_symbol_info()
+            # La risposta reale e' un dict indicizzato per simbolo
+            # ({"BINANCE_PERP_BTC_USDT": {...}, ...}), non una lista: _as_list
+            # non lo riconosce (nessuna chiave-contenitore nota) e lo tratterebbe
+            # come un unico oggetto senza "sym", scartando tutto.
+            if isinstance(data, dict):
+                items = [v for v in data.values() if isinstance(v, dict)]
+            else:
+                items = _as_list(data)
+            for item in items:
                 sym = _fstr(item, "sym", "symbol")
                 if not sym:
                     continue

@@ -6,11 +6,15 @@ from aitrade.config import ExecutionCfg, RiskCfg
 
 
 class _FakeClient:
-    def __init__(self, positions):
+    def __init__(self, positions=None, symbol_info=None):
         self._positions = positions
+        self._symbol_info = symbol_info
 
     def get_positions(self):
         return self._positions
+
+    def get_symbol_info(self):
+        return self._symbol_info
 
 
 def make_broker(positions):
@@ -57,3 +61,23 @@ def test_skips_entries_without_symbol():
         {"positionSide": "NONE", "positionQty": "5", "entryPrice": "1"},
     ])
     assert broker.get_positions() == {}
+
+
+def test_load_symbol_rules_handles_dict_keyed_by_symbol():
+    """Riproduce la forma reale di GET /trading/sym/info scoperta in produzione:
+    un dict indicizzato per simbolo, non una lista di oggetti-regola."""
+    broker = RapidXBroker(_FakeClient(symbol_info={
+        "BINANCE_PERP_UNI_USDT": {
+            "sym": "BINANCE_PERP_UNI_USDT", "qtyPrecision": "0",
+            "lotSize": "1", "tickSize": "0.0010", "minNotional": "5",
+        },
+        "BINANCE_PERP_DEXE_USDT": {
+            "sym": "BINANCE_PERP_DEXE_USDT", "qtyPrecision": "2",
+            "lotSize": "0.01", "tickSize": "0.001000", "minNotional": "5",
+        },
+    }), ExecutionCfg(), RiskCfg())
+
+    broker.load_symbol_rules()
+
+    assert broker.round_qty("BINANCE_PERP_UNI_USDT", 12.789) == 12
+    assert broker.round_qty("BINANCE_PERP_DEXE_USDT", 3.456) == 3.45

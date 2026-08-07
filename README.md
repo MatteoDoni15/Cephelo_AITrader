@@ -90,19 +90,66 @@ aitrade/
 Paper, live e backtest usano **la stessa strategia e lo stesso risk manager**: quello
 che testi è quello che gira.
 
+### Il ciclo di un tick (ogni 60 secondi)
+
+```mermaid
+flowchart TD
+    START(["⏱️ Ogni 60s: tick()"]) --> PRICES["Aggiorna prezzi ed equity"]
+    PRICES --> LEVEL{"Livello di rischio?"}
+    LEVEL -- HARD_KILL --> KILLALL["🚨 Chiudi tutte le posizioni<br/>bot fermo fino a reset-kill"]
+    LEVEL -- "NORMAL / WARN / SOFT_KILL" --> STOPS["Aggiorna trailing stop (2.5×ATR)<br/>chiudi le posizioni colpite"]
+    STOPS --> BAR{"Candela 4h<br/>appena chiusa?"}
+    BAR -- no --> SAVE["Salva stato + log heartbeat"]
+    BAR -- si --> SIGNALS["Calcola segnali momentum<br/>su tutto l'universo (50 simboli)"]
+    SIGNALS --> AI{"E' ora di chiedere<br/>un parere AI? (max 3/gg)"}
+    AI -- si --> ASKAI["🧠 Interroga Strategy Agent<br/>(vedi sequenza AI più sotto)"]
+    AI -- no --> DECIDE
+    ASKAI --> DECIDE["Decidi CLOSE (trend rotto o<br/>fuori rank) e OPEN (nuovi long/short)"]
+    DECIDE --> CANOPEN{"Il rischio permette<br/>nuove aperture?"}
+    CANOPEN -- "si (NORMAL/WARN)" --> EXEC["Esegui ordini<br/>size = risk manager × moltiplicatore AI"]
+    CANOPEN -- "no (SOFT_KILL+)" --> ONLYCLOSE["Esegui solo le chiusure"]
+    EXEC --> SAVE
+    ONLYCLOSE --> SAVE
+    KILLALL --> SAVE
+    SAVE --> START
+```
+
 ## Agenti AI (Signal + Strategy, opzionale)
 
 L'AI advisor non parla piu' direttamente con l'AI Gateway: e' diviso in due
 piccoli agenti [BeeAI](https://github.com/i-am-bee/beeai-framework), avviati
 come processi separati e raggiunti via protocollo **A2A su localhost**
-(mai esposti in rete):
+(mai esposti in rete). Il principio guida e' la separazione dei privilegi:
+ogni processo detiene solo le credenziali che gli servono, e nessuno dei due
+agenti AI puo' mai toccare denaro.
 
-```
-engine.py --(A2A)--> Strategy Agent --(A2A)--> Signal Agent
-                          |
-                          v
-                 AI Gateway organizzatore
-                 (MiniMax-M3, adapter BeeAI nativo)
+### Vista d'insieme
+
+```mermaid
+flowchart LR
+    subgraph LOCALE["Macchina del bot — solo localhost, mai esposto in rete"]
+        ENG["🖥️ engine.py<br/>Motore di trading<br/><i>unico a detenere le chiavi RapidX</i>"]
+        ADV["📡 ai/advisor.py<br/>Advisor<br/><i>nessuna credenziale</i>"]
+        SA["🧠 Strategy Agent<br/><i>unico a detenere AI_API_KEY</i>"]
+        SIG["🔍 Signal Agent<br/><i>nessuna credenziale</i>"]
+        SCAN["🛡️ Injection Scanner<br/>filtro anti prompt-injection"]
+    end
+    GATEWAY["☁️ AI Gateway organizzatore<br/>MiniMax-M3"]
+    DDG["🌐 DuckDuckGo<br/>ricerca web gratuita"]
+    RAPIDX["💱 RapidX<br/>ordini reali"]
+
+    ENG -- "snapshot ogni 8h, max 3/gg" --> ADV
+    ADV -- A2A --> SA
+    SA -- A2A --> SIG
+    SIG -- ricerca --> DDG
+    DDG -. risultati grezzi .-> SCAN
+    SCAN -- testo pulito --> SIG
+    SIG -- notizie filtrate --> SA
+    SA -- "1 chiamata/ciclo" --> GATEWAY
+    GATEWAY -- risk_multiplier --> SA
+    SA --> ADV
+    ADV -- "scala SOLO le size nuove" --> ENG
+    ENG -- ordini firmati HMAC --> RAPIDX
 ```
 
 - **Signal Agent** (`agents/signal_agent.py`): ricerca web + news via
@@ -126,12 +173,51 @@ engine.py --(A2A)--> Strategy Agent --(A2A)--> Signal Agent
   che interroga lo Strategy Agent via A2A. Non detiene ne' le credenziali
   RapidX (quelle restano solo in `engine.py`) ne' quelle dell'AI Gateway.
 
-Proprieta' invariate rispetto alla versione precedente: **una sola chiamata
-AI per valutazione** (budget $10/giorno rispettato), il multiplier scala
-solo la size delle nuove posizioni (mai aperture/chiusure dirette), e
-qualunque errore in qualsiasi punto della catena (agente giu', timeout,
-output fuori schema) fa ripiegare su multiplier invariato — mai un punto di
-rottura per il trading.
+### Sequenza di una valutazione
+
+Cosa succede davvero, passo per passo, quando scatta una valutazione AI
+(al massimo ogni 8 ore, 3 volte al giorno) — incluso cosa succede quando
+qualcosa va storto:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant E as engine.py
+    participant A as Advisor
+    participant S as Strategy Agent
+    participant B as Budget Guard
+    participant G as Signal Agent
+    participant F as Injection Scanner
+    participant M as AI Gateway (MiniMax-M3)
+
+    E->>A: snapshot (equity, posizioni, momentum leader/laggard)
+    A->>S: snapshot + headline RapidX (A2A, trace_id)
+    S->>B: GET /key/info (spesa reale vs budget)
+    B-->>S: spend / max_budget
+
+    alt budget quasi esaurito (fail-open se /key/info non risponde)
+        S-->>A: errore "ai_budget_exhausted"
+        A-->>E: multiplier INVARIATO (fallback neutro)
+    else budget ok
+        S->>G: cerca notizie sui simboli rilevanti (A2A)
+        G->>G: ricerca su DuckDuckGo
+        G->>F: filtra i risultati grezzi
+        F-->>G: testo pulito
+        G-->>S: notizie filtrate
+        S->>F: filtra anche le headline RapidX
+        F-->>S: headline pulite
+        S->>M: 1 sola chiamata (system + user prompt)
+        M-->>S: JSON {risk_multiplier, regime, comment}
+        S-->>A: payload validato (Pydantic)
+        A-->>E: nuovo risk_multiplier (0..1)
+    end
+    Note over E: il multiplier scala SOLO la size delle nuove<br/>posizioni — non apre, non chiude, mai un blocco al trading
+```
+
+Qualunque punto della catena puo' fallire (agente giu', timeout, JSON fuori
+schema, budget esaurito): in ogni caso il risultato e' lo stesso, il
+multiplier resta quello del ciclo precedente e il bot continua a tradare da
+solo. L'AI e' un miglioramento opzionale, mai un punto di rottura.
 
 **Controllo budget reale** (`agents/budget_guard.py`): il conteggio locale
 (`max_calls_per_day`) non vede i retry sullo schema ne' le chiamate di
