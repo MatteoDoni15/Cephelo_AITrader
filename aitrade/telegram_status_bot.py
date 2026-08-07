@@ -1,8 +1,8 @@
 """Bot Telegram "in ascolto": risponde con lo stato del portafoglio quando si
-scrive "status" nella chat col bot, e manda in automatico un report esteso
-(stato + riepilogo trade + errori/warning dal log) due volte al giorno (le
-notifiche automatiche in uscita su SOFT_KILL/HARD_KILL restano separate,
-vedi aitrade/alerts.py).
+scrive "status" nella chat col bot, con il report esteso (stato + riepilogo
+trade + errori/warning dal log) a richiesta scrivendo "report", e lo manda in
+automatico due volte al giorno (le notifiche automatiche in uscita su
+SOFT_KILL/HARD_KILL restano separate, vedi aitrade/alerts.py).
 
 Processo indipendente dal bot di trading: se e' giu' o non parte, il trading
 continua normalmente, si perde solo la possibilita' di chiedere lo stato via
@@ -37,6 +37,8 @@ log = logging.getLogger(__name__)
 POLL_TIMEOUT_SEC = 30
 ERROR_RETRY_SEC = 5
 STATUS_COMMANDS = {"status", "/status"}
+REPORT_COMMANDS = {"report", "/report"}
+REPORT_ON_DEMAND_LOOKBACK_HOURS = 12
 
 # Orari di invio del report automatico, ora locale della macchina dove gira
 # il bot (di norma UTC su una VM cloud) - confrontati con time.localtime().
@@ -67,15 +69,23 @@ def _initial_offset(token: str) -> int | None:
     return stale[-1]["update_id"] + 1 if stale else None
 
 
-def handle_update(update: dict, chat_id: str, store: Store) -> str | None:
-    """Ritorna il testo di risposta se l'update e' un comando "status"
-    autorizzato, altrimenti None (nessuna risposta)."""
+def handle_update(update: dict, chat_id: str, store: Store,
+                   trades_file: Path | None = None, log_file: Path | None = None) -> str | None:
+    """Ritorna il testo di risposta se l'update e' un comando "status" o
+    "report" autorizzato, altrimenti None (nessuna risposta). trades_file/
+    log_file sono opzionali solo per non rompere le chiamate esistenti che
+    non usano ancora il comando "report"."""
     msg = update.get("message") or {}
     sender_chat_id = str(msg.get("chat", {}).get("id", ""))
     text = (msg.get("text") or "").strip().lower()
-    if sender_chat_id != str(chat_id) or text not in STATUS_COMMANDS:
+    if sender_chat_id != str(chat_id):
         return None
-    return format_status(store.load())
+    if text in STATUS_COMMANDS:
+        return format_status(store.load())
+    if text in REPORT_COMMANDS and trades_file is not None and log_file is not None:
+        since_ts = time.time() - REPORT_ON_DEMAND_LOOKBACK_HOURS * 3600
+        return build_scheduled_report(store, trades_file, log_file, since_ts)
+    return None
 
 
 def _trade_summary(trades_file: Path, since_ts: float) -> str:
@@ -177,7 +187,7 @@ def main() -> None:
             continue
         for upd in updates:
             offset = upd["update_id"] + 1
-            reply = handle_update(upd, chat_id, store)
+            reply = handle_update(upd, chat_id, store, trades_file, log_file)
             if reply is not None:
                 send_telegram(token, chat_id, reply)
 

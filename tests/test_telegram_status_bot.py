@@ -41,3 +41,27 @@ def test_ignores_update_without_message(tmp_path):
     store = make_store(tmp_path)
     reply = handle_update({"update_id": 1}, chat_id="140703768", store=store)
     assert reply is None
+
+
+def test_replies_with_report_for_authorized_chat(tmp_path):
+    store = make_store(tmp_path)
+    store.save(State(equity=900.0, risk={"hwm": 1000.0}))
+    reply = handle_update(_update(140703768, "report"), chat_id="140703768", store=store,
+                           trades_file=tmp_path / "trades.csv", log_file=tmp_path / "aitrade.log")
+    assert reply is not None
+    assert "900.00 USDT" in reply
+    assert "Trade:" in reply
+    assert "Log:" in reply
+
+
+def test_report_command_ignored_without_files(tmp_path):
+    store = make_store(tmp_path)
+    reply = handle_update(_update(140703768, "report"), chat_id="140703768", store=store)
+    assert reply is None
+
+
+def test_ignores_report_from_unauthorized_chat(tmp_path):
+    store = make_store(tmp_path)
+    reply = handle_update(_update(999, "report"), chat_id="140703768", store=store,
+                           trades_file=tmp_path / "trades.csv", log_file=tmp_path / "aitrade.log")
+    assert reply is None
